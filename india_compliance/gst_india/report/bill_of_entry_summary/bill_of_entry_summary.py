@@ -67,7 +67,8 @@ def update_journal_entry_for_payment(query):
     return (
         query.left_join(journal_entry_account)
         .on(bill_of_entry.name == journal_entry_account.reference_name)
-        .select(journal_entry_account.parent.as_("payment_journal_entry"))
+        # .select(journal_entry_account.parent.as_("payment_journal_entry"))
+        .select(GROUP_CONCAT(journal_entry_account.parent, ",").as_("payment_journal_entry"))
     )
 
 
@@ -81,9 +82,13 @@ def update_purchase_invoice_query(query):
         .on(bill_of_entry_item.parent == bill_of_entry.name)
         .left_join(purchase_invoice)
         .on(purchase_invoice.name == bill_of_entry_item.purchase_invoice)
+        # .select(
+        #     GROUP_CONCAT(purchase_invoice.name, ",").as_("purchase_invoice"),
+        #     purchase_invoice.supplier,
+        # )
         .select(
             GROUP_CONCAT(purchase_invoice.name, ",").as_("purchase_invoice"),
-            purchase_invoice.supplier,
+            GROUP_CONCAT(purchase_invoice.supplier, ",").as_("supplier"),
         )
         .groupby(bill_of_entry.name)
     )

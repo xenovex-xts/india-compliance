@@ -171,7 +171,8 @@ def toggle_allow_on_submit(allow=True, voucher_types=None):
     custom_field = frappe.qb.DocType("Custom Field")
     query = (
         frappe.qb.update(custom_field)
-        .set(custom_field.allow_on_submit, bool(allow))
+        # .set(custom_field.allow_on_submit, bool(allow))
+        .set(custom_field.allow_on_submit, 1 if allow else 0)
         .where(custom_field.fieldname == "company_gstin")
     )
 

@@ -15,12 +15,18 @@ def delete_tax_id_custom_field():
     delete_old_fields("tax_id", ("Sales Order", "Sales Invoice", "Delivery Note"))
 
 
+# def set_correct_state_number():
+#     # set correct state number for all states with single digit state number
+#     frappe.db.sql(
+#         """UPDATE tabAddress SET gst_state_number=concat("0", gst_state_number)
+#             WHERE length(gst_state_number) = 1"""
+#     )
 def set_correct_state_number():
-    # set correct state number for all states with single digit state number
-    frappe.db.sql(
-        """UPDATE tabAddress SET gst_state_number=concat("0", gst_state_number)
-            WHERE length(gst_state_number) = 1"""
-    )
+    frappe.db.sql("""
+        UPDATE "tabAddress"
+        SET gst_state_number = LPAD(gst_state_number, 2, '0')
+        WHERE LENGTH(gst_state_number) = 1
+    """)
 
 
 def remove_shipping_fields_from_purchase_invoice():

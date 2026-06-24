@@ -7,18 +7,24 @@ def execute():
     PI_ITEM = frappe.qb.DocType("Purchase Invoice Item")
     BOE = frappe.qb.DocType("Bill of Entry")
 
+    non_gst_items = (
+        frappe.qb.from_(PI_ITEM)
+        .select(PI_ITEM.parent)
+        .where(PI_ITEM.gst_treatment == "Non-GST")
+    )
+
     (
         frappe.qb.update(PI)
         .set(PI.reconciliation_status, "Not Applicable")
-        .join(PI_ITEM)
-        .on(PI.name == PI_ITEM.parent)
+        # .join(PI_ITEM)
+        # .on(PI.name == PI_ITEM.parent)
         .where(PI.docstatus == 1)
         .where(
             (IfNull(PI.supplier_gstin, "") == "")
             | (IfNull(PI.gst_category, "").isin(["Registered Composition", "Unregistered", "Overseas"]))
             | (IfNull(PI.supplier_gstin, "") == PI.company_gstin)
             | (IfNull(PI.is_opening, "") == "Yes")
-            | (PI_ITEM.gst_treatment == "Non-GST")
+            | (PI.name.isin(non_gst_items))
         )
         .run()
     )
