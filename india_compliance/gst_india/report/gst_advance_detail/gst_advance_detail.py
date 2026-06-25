@@ -156,7 +156,26 @@ class GSTAdvanceDetail:
                 ConstantColumn("").as_("against_voucher"),
             )
             .where(self.gl_entry.credit_in_account_currency > 0)
-            .groupby(self.gl_entry.voucher_no)
+            # in GROUP BY. get_query() selects:
+            #   - gl_entry.voucher_no              
+            #   - gl_entry.posting_date           
+            #   - pe.name                          
+            #   - pe.party                        
+            #   - pe.party_name                    
+            #   - pe.paid_amount (in CASE result)  
+            #   - pe.place_of_supply               
+            #   - gl_entry.credit_in_account_currency (in CASE condition) 
+            # Sum(credit_in_account_currency) and Sum(debit_in_account_currency)
+            .groupby(
+                self.gl_entry.voucher_no,
+                self.gl_entry.posting_date,
+                self.pe.name,
+                self.pe.party,
+                self.pe.party_name,
+                self.pe.paid_amount,
+                self.pe.place_of_supply,
+                self.gl_entry.credit_in_account_currency,
+            )
             .run(as_dict=True)
         )
 
@@ -174,10 +193,35 @@ class GSTAdvanceDetail:
         )
 
         if self.filters.get("show_summary"):
-            query = query.groupby(self.gl_entry.voucher_no)
+            query = query.groupby(
+                self.gl_entry.voucher_no,
+                self.gl_entry.posting_date,
+                self.pe.name,
+                self.pe.party,
+                self.pe.party_name,
+                self.pe.paid_amount,
+                self.pe.place_of_supply,
+                self.gl_entry.credit_in_account_currency,
+                self.pe_ref.allocated_amount,
+                self.pe_ref.reference_doctype,
+                self.pe_ref.reference_name,
+            )
 
         else:
-            query = query.groupby(self.gl_entry.voucher_detail_no)
+            query = query.groupby(
+                self.gl_entry.voucher_detail_no,
+                self.gl_entry.voucher_no,
+                self.gl_entry.posting_date,
+                self.pe.name,
+                self.pe.party,
+                self.pe.party_name,
+                self.pe.paid_amount,
+                self.pe.place_of_supply,
+                self.gl_entry.credit_in_account_currency,
+                self.pe_ref.allocated_amount,
+                self.pe_ref.reference_doctype,
+                self.pe_ref.reference_name,
+            )
 
         return query.run(as_dict=True)
 
