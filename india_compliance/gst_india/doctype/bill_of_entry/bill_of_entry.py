@@ -772,6 +772,41 @@ def get_pi_items(purchase_invoices):
     )
 
 
+# @frappe.whitelist()
+# def fetch_pending_boe_invoices(
+#     doctype: str,
+#     txt: str,
+#     searchfield: str,
+#     start: int,
+#     page_len: int,
+#     filters: str | dict | frappe._dict,
+# ):
+#     """
+#     Permission check not required as using get_list
+#     """
+#     filters = frappe._dict(filters)
+
+#     if txt and not filters.get("name"):
+#         filters.name = ["like", f"%{txt}%"]
+
+#     # TODO: fix required in frappe
+#     if filters.name and filters.name[1] is None:
+#         filters.name = ["!=", ""]
+
+#     return frappe.get_list(
+#         "Purchase Invoice",
+#         filters={
+#             **filters,
+#             "docstatus": 1,
+#             "gst_category": ["in", list(IMPORT_GST_CATEGORIES)],
+#             "is_boe_applicable": 1,
+#             "pending_boe_qty": [">", 0],
+#         },
+#         fields=["name", "company", "company_gstin"],
+#         limit_start=start,
+#         limit_page_length=page_len,
+#         distinct=True,
+#     )
 @frappe.whitelist()
 def fetch_pending_boe_invoices(
     doctype: str,
@@ -793,17 +828,50 @@ def fetch_pending_boe_invoices(
     if filters.name and filters.name[1] is None:
         filters.name = ["!=", ""]
 
-    return frappe.get_list(
-        "Purchase Invoice",
-        filters={
-            **filters,
-            "docstatus": 1,
-            "gst_category": ["in", list(IMPORT_GST_CATEGORIES)],
-            "is_boe_applicable": 1,
-            "pending_boe_qty": [">", 0],
-        },
-        fields=["name", "company", "company_gstin"],
-        limit_start=start,
-        limit_page_length=page_len,
-        distinct=True,
+    pi = frappe.qb.DocType("Purchase Invoice")
+    pi_item = frappe.qb.DocType("Purchase Invoice Item")
+
+    from frappe.query_builder.functions import IfNull
+
+    query = (
+        frappe.qb.from_(pi)
+        .join(pi_item)
+        .on(pi_item.parent == pi.name)
+        .select(pi.name, pi.company, pi.company_gstin)
+        .where(pi.docstatus == 1)
+        .where(pi.gst_category.isin(list(IMPORT_GST_CATEGORIES)))
+        .where(pi.is_boe_applicable == 1)
+        .where(IfNull(pi_item.pending_boe_qty, 0) > 0)
+        .distinct()
+        .limit(page_len)
+        .offset(start)
     )
+
+    if filters.get("company"):
+        query = query.where(pi.company == filters.company)
+
+    if filters.get("company_gstin"):
+        gstin = filters.company_gstin
+        if isinstance(gstin, (list, tuple)):
+            op, val = gstin
+            if op.lower() == "like":
+                query = query.where(pi.company_gstin.like(val))
+            elif op.lower() == "=":
+                query = query.where(pi.company_gstin == val)
+        else:
+            query = query.where(pi.company_gstin == gstin)
+
+    if filters.get("name"):
+        name_filter = filters.name
+        if isinstance(name_filter, (list, tuple)):
+            op, val = name_filter
+            if op.lower() == "like":
+                query = query.where(pi.name.like(val))
+            elif op.lower() in ("!=", "not like"):
+                query = query.where(pi.name != val)
+            else:
+                query = query.where(pi.name == val)
+        else:
+            query = query.where(pi.name == name_filter)
+
+    return query.run(as_dict=True)

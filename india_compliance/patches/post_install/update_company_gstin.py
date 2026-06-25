@@ -55,7 +55,8 @@ def verify_gstin_update(gst_accounts=None):
         toggle_allow_on_submit(True, voucher_types)
         return voucher_types
 
-    toggle_allow_on_submit(False)
+    # toggle_allow_on_submit(False)
+    return []
 
 
 def update_gstin_for_je(company, gst_accounts):

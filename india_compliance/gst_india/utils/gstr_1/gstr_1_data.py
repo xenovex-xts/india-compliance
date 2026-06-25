@@ -956,9 +956,32 @@ class GSTR11A11BData:
 
         return self.process_data(records)
 
+    # def get_11A_query(self):
+    #     return (
+    #         self.get_query("Advances").select(self.pe.paid_amount.as_("taxable_value")).groupby(self.pe.name)
+    #     )
+
+    # def get_11B_query(self):
+    #     return (
+    #         self.get_query("Adjustment")
+    #         .join(self.pe_ref)
+    #         .on(self.pe_ref.name == self.gl_entry.voucher_detail_no)
+    #         .select(self.pe_ref.allocated_amount.as_("taxable_value"))
+    #         .groupby(self.gl_entry.voucher_detail_no)
+    #     )
+
     def get_11A_query(self):
         return (
-            self.get_query("Advances").select(self.pe.paid_amount.as_("taxable_value")).groupby(self.pe.name)
+            self.get_query("Advances")
+            .select(self.pe.paid_amount.as_("taxable_value"))
+            .groupby(
+                self.pe.name,
+                self.pe.place_of_supply,
+                self.pe.paid_amount,
+                self.pe.party,
+                self.pe.posting_date,
+                self.pe.company_gstin,
+            )
         )
 
     def get_11B_query(self):
@@ -967,7 +990,16 @@ class GSTR11A11BData:
             .join(self.pe_ref)
             .on(self.pe_ref.name == self.gl_entry.voucher_detail_no)
             .select(self.pe_ref.allocated_amount.as_("taxable_value"))
-            .groupby(self.gl_entry.voucher_detail_no)
+            .groupby(
+                self.gl_entry.voucher_detail_no,
+                self.pe.place_of_supply,
+                self.pe_ref.allocated_amount,
+                self.pe.name,
+                self.pe.party,
+                self.pe.posting_date,
+                self.pe.company_gstin,
+                self.pe_ref.reference_name,
+            )
         )
 
     def get_query(self, type_of_business):
