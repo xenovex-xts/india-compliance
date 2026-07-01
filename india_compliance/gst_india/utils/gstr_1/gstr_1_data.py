@@ -978,12 +978,16 @@ class GSTR11A11BData:
         )
 
     def get_11B_query(self):
+        # PG strict GROUP BY needs the primary key of every table with a
+        # non-aggregated selected column: pe.name frees pe.place_of_supply and
+        # pe_ref.name frees pe_ref.allocated_amount. voucher_detail_no == pe_ref.name
+        # (1:1 via the join), so grouping granularity is unchanged.
         return (
             self.get_query("Adjustment")
             .join(self.pe_ref)
             .on(self.pe_ref.name == self.gl_entry.voucher_detail_no)
             .select(self.pe_ref.allocated_amount.as_("taxable_value"))
-            .groupby(self.gl_entry.voucher_detail_no)
+            .groupby(self.gl_entry.voucher_detail_no, self.pe.name, self.pe_ref.name)
         )
 
     def get_query(self, type_of_business):

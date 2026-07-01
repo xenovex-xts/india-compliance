@@ -5,7 +5,7 @@ import frappe
 from frappe import _
 from frappe.query_builder import Criterion
 from frappe.query_builder.custom import ConstantColumn
-from frappe.query_builder.functions import IfNull, Sum
+from frappe.query_builder.functions import IfNull, Max, Sum
 from frappe.utils import flt, getdate
 from pypika.terms import Case
 
@@ -156,7 +156,10 @@ class GSTAdvanceDetail:
                 ConstantColumn("").as_("against_voucher"),
             )
             .where(self.gl_entry.credit_in_account_currency > 0)
-            .groupby(self.gl_entry.voucher_no)
+            # PG strict GROUP BY: add posting_date and the pe primary key
+            # (payment_entry) so every non-aggregated selected column is covered.
+            # Both are constant per voucher_no, so the grouping is unchanged.
+            .groupby(self.gl_entry.voucher_no, self.gl_entry.posting_date, self.pe.name)
             .run(as_dict=True)
         )
 
@@ -166,18 +169,30 @@ class GSTAdvanceDetail:
             .join(self.pe_ref)
             .on(self.pe_ref.name == self.gl_entry.voucher_detail_no)
             .select(
-                self.pe_ref.allocated_amount,
-                self.pe_ref.reference_doctype.as_("against_voucher_type"),
-                self.pe_ref.reference_name.as_("against_voucher"),
+                # These pe_ref columns are aggregated with Max() so they satisfy
+                # PG strict GROUP BY in both branches below: in summary mode a
+                # voucher spans several references (Python re-sums the amounts
+                # afterwards), and in detail mode there is one reference per
+                # group, so Max() returns that single value unchanged.
+                Max(self.pe_ref.allocated_amount).as_("allocated_amount"),
+                Max(self.pe_ref.reference_doctype).as_("against_voucher_type"),
+                Max(self.pe_ref.reference_name).as_("against_voucher"),
             )
             .where(self.gl_entry.debit_in_account_currency > 0)
         )
 
+        # In both branches posting_date and the pe primary key are constant per
+        # group, so adding them for PG strict GROUP BY does not change grouping.
         if self.filters.get("show_summary"):
-            query = query.groupby(self.gl_entry.voucher_no)
+            query = query.groupby(self.gl_entry.voucher_no, self.gl_entry.posting_date, self.pe.name)
 
         else:
-            query = query.groupby(self.gl_entry.voucher_detail_no)
+            query = query.groupby(
+                self.gl_entry.voucher_detail_no,
+                self.gl_entry.voucher_no,
+                self.gl_entry.posting_date,
+                self.pe.name,
+            )
 
         return query.run(as_dict=True)
 
@@ -192,10 +207,16 @@ class GSTAdvanceDetail:
                 self.pe.name.as_("payment_entry"),
                 self.pe.party.as_("customer"),
                 self.pe.party_name.as_("customer_name"),
-                Case()
-                .when(self.gl_entry.credit_in_account_currency > 0, self.pe.paid_amount)
-                .else_(0)
-                .as_("paid_amount"),
+                # This CASE references gl_entry.credit_in_account_currency (a
+                # per-row column) while the query aggregates by voucher. Wrap it
+                # in Max() so it is a proper aggregate under PG strict GROUP BY
+                # instead of grouping by the raw amount (which would split the
+                # Sum() below per GST-account line and inflate the totals).
+                Max(
+                    Case()
+                    .when(self.gl_entry.credit_in_account_currency > 0, self.pe.paid_amount)
+                    .else_(0)
+                ).as_("paid_amount"),
                 Sum(self.gl_entry.credit_in_account_currency).as_("gst_paid"),
                 Sum(self.gl_entry.debit_in_account_currency).as_("gst_allocated"),
                 self.pe.place_of_supply,
