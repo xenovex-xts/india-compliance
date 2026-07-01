@@ -16,10 +16,13 @@ def delete_tax_id_custom_field():
 
 
 def set_correct_state_number():
-    # set correct state number for all states with single digit state number
+    # set correct state number for all states with single digit state number.
+    # Backtick-quote the table (frappe rewrites backticks to double quotes on PG)
+    # and use LPAD with a single-quoted literal. The original concat("0", ...)
+    # broke on PG, where "0" is parsed as an identifier rather than a string.
     frappe.db.sql(
-        """UPDATE tabAddress SET gst_state_number=concat("0", gst_state_number)
-            WHERE length(gst_state_number) = 1"""
+        """UPDATE `tabAddress` SET gst_state_number = LPAD(gst_state_number, 2, '0')
+            WHERE LENGTH(gst_state_number) = 1"""
     )
 
 
