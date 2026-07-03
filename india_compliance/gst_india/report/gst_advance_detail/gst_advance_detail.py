@@ -169,11 +169,8 @@ class GSTAdvanceDetail:
             .join(self.pe_ref)
             .on(self.pe_ref.name == self.gl_entry.voucher_detail_no)
             .select(
-                # These pe_ref columns are aggregated with Max() so they satisfy
-                # PG strict GROUP BY in both branches below: in summary mode a
-                # voucher spans several references (Python re-sums the amounts
-                # afterwards), and in detail mode there is one reference per
-                # group, so Max() returns that single value unchanged.
+                # A reference can have several GST ledger rows. Collapse those
+                # rows without multiplying the reference's allocated amount.
                 Max(self.pe_ref.allocated_amount).as_("allocated_amount"),
                 Max(self.pe_ref.reference_doctype).as_("against_voucher_type"),
                 Max(self.pe_ref.reference_name).as_("against_voucher"),
@@ -181,18 +178,16 @@ class GSTAdvanceDetail:
             .where(self.gl_entry.debit_in_account_currency > 0)
         )
 
-        # In both branches posting_date and the pe primary key are constant per
-        # group, so adding them for PG strict GROUP BY does not change grouping.
-        if self.filters.get("show_summary"):
-            query = query.groupby(self.gl_entry.voucher_no, self.gl_entry.posting_date, self.pe.name)
-
-        else:
-            query = query.groupby(
-                self.gl_entry.voucher_detail_no,
-                self.gl_entry.voucher_no,
-                self.gl_entry.posting_date,
-                self.pe.name,
-            )
+        # Keep one row per payment reference in both detail and summary modes.
+        # get_summary_data() then adds all references for the payment entry;
+        # grouping only by voucher_no here would discard all but the largest
+        # allocated_amount via Max().
+        query = query.groupby(
+            self.gl_entry.voucher_detail_no,
+            self.gl_entry.voucher_no,
+            self.gl_entry.posting_date,
+            self.pe.name,
+        )
 
         return query.run(as_dict=True)
 
