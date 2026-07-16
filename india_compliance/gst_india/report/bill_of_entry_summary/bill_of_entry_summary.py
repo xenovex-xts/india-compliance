@@ -3,7 +3,16 @@
 
 import frappe
 from frappe import _
-from frappe.query_builder.custom import GROUP_CONCAT
+# from frappe.query_builder.custom import GROUP_CONCAT
+from frappe.query_builder.custom import GROUP_CONCAT, STRING_AGG
+from frappe.query_builder.utils import ImportMapper, db_type_is
+
+GroupConcat = ImportMapper(
+	{
+		db_type_is.MARIADB: GROUP_CONCAT,
+		db_type_is.POSTGRES: STRING_AGG,
+	}
+)
 
 
 def execute(filters=None):
@@ -60,40 +69,68 @@ def get_data(filters):
     return query.run(as_dict=1)
 
 
-def update_journal_entry_for_payment(query):
-    bill_of_entry = frappe.qb.DocType("Bill of Entry")
-    journal_entry_account = frappe.qb.DocType("Journal Entry Account")
+# def update_journal_entry_for_payment(query):
+#     bill_of_entry = frappe.qb.DocType("Bill of Entry")
+#     journal_entry_account = frappe.qb.DocType("Journal Entry Account")
 
-    return (
-        query.left_join(journal_entry_account)
-        .on(bill_of_entry.name == journal_entry_account.reference_name)
+#     return (
+#         query.left_join(journal_entry_account)
+#         .on(bill_of_entry.name == journal_entry_account.reference_name)
+#         # The query groups by bill_of_entry.name, so this foreign-table column
+#         # must be aggregated to satisfy PG strict GROUP BY. GROUP_CONCAT is
+#         # portable via frappe (STRING_AGG on PG) and a BoE can map to several
+#         # journal entries, so concatenating them is the right semantics.
+#         .select(GROUP_CONCAT(journal_entry_account.parent, ",").as_("payment_journal_entry"))
+#     )
+def update_journal_entry_for_payment(query):
+	bill_of_entry = frappe.qb.DocType("Bill of Entry")
+	journal_entry_account = frappe.qb.DocType("Journal Entry Account")
+
+	return (
+		query.left_join(journal_entry_account)
+		.on(bill_of_entry.name == journal_entry_account.reference_name)
         # The query groups by bill_of_entry.name, so this foreign-table column
         # must be aggregated to satisfy PG strict GROUP BY. GROUP_CONCAT is
         # portable via frappe (STRING_AGG on PG) and a BoE can map to several
         # journal entries, so concatenating them is the right semantics.
-        .select(GROUP_CONCAT(journal_entry_account.parent, ",").as_("payment_journal_entry"))
-    )
+		.select(GroupConcat(journal_entry_account.parent, ",").as_("payment_journal_entry"))
+	)
 
 
+# def update_purchase_invoice_query(query):
+#     bill_of_entry = frappe.qb.DocType("Bill of Entry")
+#     bill_of_entry_item = frappe.qb.DocType("Bill of Entry Item")
+#     purchase_invoice = frappe.qb.DocType("Purchase Invoice")
+
+#     return (
+#         query.join(bill_of_entry_item)
+#         .on(bill_of_entry_item.parent == bill_of_entry.name)
+#         .left_join(purchase_invoice)
+#         .on(purchase_invoice.name == bill_of_entry_item.purchase_invoice)
+#         .select(
+#             GROUP_CONCAT(purchase_invoice.name, ",").as_("purchase_invoice"),
+#             # supplier is a foreign-table column under groupby(bill_of_entry.name);
+#             # aggregate it (like purchase_invoice.name above) for PG strict GROUP BY.
+#             GROUP_CONCAT(purchase_invoice.supplier, ",").as_("supplier"),
+#         )
+#         .groupby(bill_of_entry.name)
+#     )
 def update_purchase_invoice_query(query):
-    bill_of_entry = frappe.qb.DocType("Bill of Entry")
-    bill_of_entry_item = frappe.qb.DocType("Bill of Entry Item")
-    purchase_invoice = frappe.qb.DocType("Purchase Invoice")
+	bill_of_entry = frappe.qb.DocType("Bill of Entry")
+	bill_of_entry_item = frappe.qb.DocType("Bill of Entry Item")
+	purchase_invoice = frappe.qb.DocType("Purchase Invoice")
 
-    return (
-        query.join(bill_of_entry_item)
-        .on(bill_of_entry_item.parent == bill_of_entry.name)
-        .left_join(purchase_invoice)
-        .on(purchase_invoice.name == bill_of_entry_item.purchase_invoice)
-        .select(
-            GROUP_CONCAT(purchase_invoice.name, ",").as_("purchase_invoice"),
-            # supplier is a foreign-table column under groupby(bill_of_entry.name);
-            # aggregate it (like purchase_invoice.name above) for PG strict GROUP BY.
-            GROUP_CONCAT(purchase_invoice.supplier, ",").as_("supplier"),
-        )
-        .groupby(bill_of_entry.name)
-    )
-
+	return (
+		query.join(bill_of_entry_item)
+		.on(bill_of_entry_item.parent == bill_of_entry.name)
+		.left_join(purchase_invoice)
+		.on(purchase_invoice.name == bill_of_entry_item.purchase_invoice)
+		.select(
+			GroupConcat(purchase_invoice.name, ",").as_("purchase_invoice"),
+			GroupConcat(purchase_invoice.supplier, ",").as_("supplier"),
+		)
+		.groupby(bill_of_entry.name)
+	)
 
 def get_columns(filters):
     company_currency = frappe.get_cached_value("Company", filters.get("company"), "default_currency")
